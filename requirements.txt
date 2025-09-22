@@ -1,0 +1,34 @@
+# Web framework
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+
+# Task queue
+celery==5.4.0
+redis==5.0.8   # If using Redis as broker (or switch to rabbitmq)
+
+# PDF parsing
+pypdf2==3.0.1
+pdfplumber==0.11.4
+
+# Machine learning - embeddings + LLM
+sentence-transformers==3.2.0
+torch==2.4.1
+transformers==4.44.2
+
+# Database + Supabase
+supabase==2.6.0
+psycopg2-binary==2.9.9   # PostgreSQL adapter for Python
+
+# RAG utilities
+langchain
+langchain-community
+langchain-core
+
+# Data handling
+numpy==2.1.1
+pandas==2.2.3
+
+# Code quality (with pre-commit hooks)
+black==24.8.0
+flake8==7.1.1
+isort==5.13.2
