@@ -67,7 +67,7 @@ const PdfUpload = ({ onUpload, isProcessing }) => {
         setProgress(100);
       }
 
-      // Call the parent handler with the source (file or URL)
+      // Call the parent handler with the source (File instance or URL string)
       onUpload(source);
 
       // Reset form

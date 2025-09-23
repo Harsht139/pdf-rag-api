@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Toaster } from './components/ui/toaster';
 import PdfUpload from './components/PdfUpload';
+import { uploadPdfFile, uploadPdfLink } from './api/apiClient';
 import ChatBox from './components/ChatBox';
 import { FileText, Loader2 } from 'lucide-react';
 import './index.css';
@@ -16,24 +17,40 @@ function App() {
     },
   ]);
 
-  const handlePdfUpload = async (file) => {
+  const handlePdfUpload = async (source) => {
     try {
+      console.log('Starting upload with source:', source);
       setIsProcessing(true);
-      setUploadedPdf({
-        name: file.name,
-        size: file.size,
-        uploadedAt: new Date().toISOString(),
-      });
-
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      let result;
+      if (source instanceof File) {
+        console.log('Uploading file:', source.name);
+        result = await uploadPdfFile(source);
+        setUploadedPdf({
+          name: source.name,
+          size: source.size,
+          uploadedAt: new Date().toISOString(),
+          documentId: result.document_id,
+          filePath: result.file_path,
+          publicUrl: result.public_url,
+        });
+      } else if (typeof source === 'string') {
+        result = await uploadPdfLink(source);
+        setUploadedPdf({
+          name: source,
+          size: 0,
+          uploadedAt: new Date().toISOString(),
+          documentId: result.document_id,
+          filePath: result.file_path,
+          publicUrl: result.public_url,
+        });
+      }
 
       // Add success message
       setChatHistory((prev) => [
         ...prev,
         {
           role: 'assistant',
-          content: `I've processed your document "${file.name}". You can now ask me questions about it!`,
+          content: 'Stored your document.',
           timestamp: new Date().toISOString(),
         },
       ]);
