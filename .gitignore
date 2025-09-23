@@ -87,3 +87,18 @@ tmp/
 deployment/secrets/
 *.pem
 *.key
+*.tfvars
+
+# Terraform
+.terraform/
+.terraform.*
+terraform.tfstate
+terraform.tfstate.*
+*.tfplan
+*.tfplan.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
