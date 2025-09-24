@@ -14,7 +14,7 @@ __license__ = "MIT"
 
 # Define what gets imported with 'from pdf_rag_api import *'
 __all__ = [
-    '__version__',
-    '__author__',
-    '__license__',
+    "__version__",
+    "__author__",
+    "__license__",
 ]

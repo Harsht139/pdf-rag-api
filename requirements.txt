@@ -7,9 +7,9 @@ python-multipart>=0.0.6,<1.0.0
 
 # PDF parsing
 PyMuPDF>=1.23.8,<2.0.0
-
+pdfplumber>=0.9.0,<1.0.0
 # Database + Supabase
-supabase>=1.0.0,<2.0.0
+supabase>=2.5.0
 httpx>=0.24.0,<0.25.0
 psycopg2-binary>=2.9.0,<3.0.0   # PostgreSQL adapter for Python
 
@@ -19,3 +19,5 @@ isort==5.12.0
 flake8==6.1.0
 mypy==1.7.1
 pre-commit==3.6.0
+
+requests
