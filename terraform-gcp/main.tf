@@ -17,7 +17,8 @@ resource "google_project_iam_member" "service_account_roles" {
   for_each = toset([
     "roles/artifactregistry.admin",
     "roles/iam.serviceAccountUser",
-    "roles/run.admin"
+    "roles/run.admin",
+    "roles/cloudtasks.admin"
   ])
 
   project = var.project_id
