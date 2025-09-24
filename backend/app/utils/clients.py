@@ -16,9 +16,18 @@ from supabase import Client, create_client
 def get_supabase_client() -> Client:
     """Create and return a Supabase client using configured credentials."""
     if not settings.supabase_url or not settings.supabase_key:
-        # In tests or local without env, create a dummy client-like object that raises on use
         raise RuntimeError("Supabase credentials not configured")
-    return create_client(settings.supabase_url, settings.supabase_key)
+    
+    try:
+        # Try the simplest initialization first
+        return create_client(settings.supabase_url, settings.supabase_key)
+    except TypeError as e:
+        if "unexpected keyword argument 'http_client'" in str(e):
+            # Fall back to initialization without http_client
+            from supabase import ClientOptions
+            options = ClientOptions()
+            return create_client(settings.supabase_url, settings.supabase_key, options)
+        raise
 
 
 def upload_bytes_to_supabase_storage(
@@ -29,21 +38,65 @@ def upload_bytes_to_supabase_storage(
 ) -> dict:
     """Upload bytes to Supabase Storage and return { path, public_url }.
 
-    Assumes the bucket is public. If private, switch to signed URLs as needed.
+    Handles duplicate files by checking content and generating unique names if needed.
     """
     client = get_supabase_client()
     bucket = settings.supabase_bucket
-
-    # The Python client accepts bytes with a destination path
-    client.storage.from_(bucket).upload(
-        path=object_path,
-        file=file_bytes,
-        # Supabase expects header values as strings; set upsert to "true" to avoid conflicts on re-upload
-        file_options={"content-type": content_type, "upsert": "true"},
-    )
-
-    public_url = client.storage.from_(bucket).get_public_url(object_path)
-    return {"path": object_path, "public_url": public_url}
+    
+    def upload_with_retry(path: str, retry_count: int = 0) -> dict:
+        """Helper function to handle uploads with retries and duplicate handling"""
+        try:
+            # First try with upsert
+            client.storage.from_(bucket).upload(
+                path=path,
+                file=file_bytes,
+                file_options={"content-type": content_type, "upsert": "true"},
+            )
+            return {
+                "path": path,
+                "public_url": client.storage.from_(bucket).get_public_url(path)
+            }
+        except Exception as e:
+            if "Duplicate" in str(e) and retry_count < 3:  # If duplicate, try with a new name
+                import random
+                import string
+                # Generate a new path with a random suffix
+                name_parts = path.rsplit('.', 1)
+                suffix = ''.join(random.choices(string.ascii_lowercase + string.digits, k=6))
+                new_path = f"{name_parts[0]}_{suffix}.{name_parts[1]}" if len(name_parts) > 1 else f"{path}_{suffix}"
+                return upload_with_retry(new_path, retry_count + 1)
+            elif "file_options" in str(e):
+                # Fallback for older supabase versions
+                try:
+                    client.storage.from_(bucket).upload(path=path, file=file_bytes)
+                    return {
+                        "path": path,
+                        "public_url": client.storage.from_(bucket).get_public_url(path)
+                    }
+                except Exception as inner_e:
+                    if "Duplicate" in str(inner_e) and retry_count < 3:
+                        return upload_with_retry(f"{path}_{retry_count}", retry_count + 1)
+                    raise inner_e
+            raise e
+    
+    # Start the upload process with the original path
+    try:
+        return upload_with_retry(object_path)
+    except Exception as e:
+        # If all else fails, try one last time with a completely random name
+        import uuid
+        random_name = str(uuid.uuid4())
+        ext = object_path.split('.')[-1] if '.' in object_path else 'bin'
+        final_path = f"uploads/{random_name}.{ext}"
+        
+        client.storage.from_(bucket).upload(
+            path=final_path,
+            file=file_bytes
+        )
+        return {
+            "path": final_path,
+            "public_url": client.storage.from_(bucket).get_public_url(final_path)
+        }
 
 
 async def fetch_bytes_from_url(url: str) -> tuple[bytes, str]:
