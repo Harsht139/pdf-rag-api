@@ -18,7 +18,8 @@ resource "google_project_iam_member" "service_account_roles" {
     "roles/artifactregistry.admin",
     "roles/iam.serviceAccountUser",
     "roles/run.admin",
-    "roles/cloudtasks.admin"
+    "roles/cloudtasks.admin",
+    "roles/run.invoker"
   ])
 
   project = var.project_id
