@@ -20,19 +20,18 @@
     # Copy installed Python packages
     COPY --from=builder /install /usr/local
     
-    # Copy app folder only (flatten from backend/app to /app/app)
+    # Copy app code
     COPY backend/app ./app
     
     # Create logs/temp directories
     RUN mkdir -p /app/logs /app/temp
     
-    # Environment variables
-    ENV PORT=8000
+    # Cloud Run injects PORT env variable (defaults to 8080)
     ENV HOST=0.0.0.0
     
-    # Expose port
-    EXPOSE 8000
+    # Expose port 8080 (Cloud Run default)
+    EXPOSE 8080
     
-    # Run FastAPI
-    CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    # Start FastAPI using the dynamic PORT
+    CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port $PORT"]
     
