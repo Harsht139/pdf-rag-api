@@ -19,7 +19,8 @@ resource "google_project_iam_member" "service_account_roles" {
     "roles/iam.serviceAccountUser",
     "roles/run.admin",
     "roles/cloudtasks.admin",
-    "roles/run.invoker"
+    "roles/run.invoker",
+    "roles/cloudbuild.builds.builder"
   ])
 
   project = var.project_id
