@@ -24,16 +24,17 @@ app.include_router(api_router, prefix="/api/v1")
 origins = [
     "http://localhost:3000",  # React dev server
     "http://127.0.0.1:3000",  # React dev server alternative
-    # "https://your-frontend-domain.com",  # Add when deployed
+    "http://localhost:3000/"  # Include with trailing slash for some browsers
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # use only this
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
+    max_age=600,  # Cache preflight requests for 10 minutes
 )
 
 
