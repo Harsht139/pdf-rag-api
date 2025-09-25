@@ -1,11 +1,18 @@
-from app.api.v1.api import api_router
-from app.utils.clients import fetch_bytes_from_url
-from app.utils.pdf_processing import (extract_text, generate_embeddings,
-                                      store_embeddings)
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-app = FastAPI(title="PDF RAG API", version="1.0.0")
+# Import config
+from app.core.config import settings
+
+# Import routers
+from app.api.v1.api import api_router
+
+# Initialize FastAPI app
+app = FastAPI(
+    title="PDF RAG API",
+    version="1.0.0",
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.API_V1_STR else None
+)
 
 
 @app.get("/")
@@ -18,15 +25,38 @@ async def health():
     return {"status": "healthy"}
 
 
+@app.get("/test-cors")
+async def test_cors():
+    return {
+        "message": "CORS test successful",
+        "cors_headers": {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*"
+        }
+    }
+
+
+# Include API routers
 app.include_router(api_router, prefix="/api/v1")
 
-# CORS configuration
+# CORS configuration for development
 origins = [
-    "http://localhost:3000",  # React dev server
-    "http://127.0.0.1:3000",  # React dev server alternative
-    "http://localhost:3000/"  # Include with trailing slash for some browsers
+    "http://localhost:3000",  # Default Vite dev server
+    "http://127.0.0.1:3000",  # Alternative localhost
 ]
 
+# Add middleware with detailed logging
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"Incoming request: {request.method} {request.url}")
+    print(f"Headers: {dict(request.headers)}")
+    response = await call_next(request)
+    print(f"Response status: {response.status_code}")
+    print(f"Response headers: {dict(response.headers)}")
+    return response
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -34,7 +64,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Disposition"],
-    max_age=600,  # Cache preflight requests for 10 minutes
+    max_age=600,
 )
 
 

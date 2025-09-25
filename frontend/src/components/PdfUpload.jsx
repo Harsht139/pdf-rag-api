@@ -46,13 +46,18 @@ const PdfUpload = ({ onUpload, isProcessing }) => {
       const result = await uploadPdfFile(file); // real API call
       clearInterval(interval);
       setProgress(100);
+      
+      // Show completion for 1 second before resetting
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Reset states
+      setProgress(0);
       onUpload(result);
-
-      // reset input
+      setFile(null);
+      
+      // Reset file input
       const fileInput = document.querySelector('input[type="file"]');
       if (fileInput) fileInput.value = '';
-      setFile(null);
-      setTimeout(() => setProgress(0), 1000);
     } catch (err) {
       setError(err.message || 'Error uploading PDF');
       setProgress(0);
