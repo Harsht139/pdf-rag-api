@@ -1,5 +1,7 @@
-from google.cloud import tasks_v2
 import json
+
+from google.cloud import tasks_v2
+
 
 def create_cloud_task(pdf_id: str, pdf_url: str):
     client = tasks_v2.CloudTasksClient()
@@ -11,17 +13,14 @@ def create_cloud_task(pdf_id: str, pdf_url: str):
     parent = client.queue_path(project, location, queue)
 
     # Task payload
-    payload = {
-        "pdf_id": pdf_id,
-        "pdf_url": pdf_url
-    }
+    payload = {"pdf_id": pdf_id, "pdf_url": pdf_url}
 
     task = {
         "http_request": {
             "http_method": tasks_v2.HttpMethod.POST,
             "url": "https://YOUR_CLOUD_RUN_URL/process_pdf",
             "headers": {"Content-Type": "application/json"},
-            "body": json.dumps(payload).encode()
+            "body": json.dumps(payload).encode(),
         }
     }
 

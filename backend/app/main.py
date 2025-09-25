@@ -1,9 +1,9 @@
 from app.api.v1.api import api_router
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi import FastAPI, Request
 from app.utils.clients import fetch_bytes_from_url
-from app.utils.pdf_processing import extract_text, generate_embeddings, store_embeddings
+from app.utils.pdf_processing import (extract_text, generate_embeddings,
+                                      store_embeddings)
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="PDF RAG API", version="1.0.0")
 
@@ -29,7 +29,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,       # use only this
+    allow_origins=origins,  # use only this
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -50,7 +50,7 @@ async def process_pdf(request: Request):
     text = extract_text(pdf_bytes)
 
     # 3. Optional: Chunk text to avoid token limit
-    chunks = [text[i:i+3000] for i in range(0, len(text), 3000)]
+    chunks = [text[i : i + 3000] for i in range(0, len(text), 3000)]
 
     embeddings_list = []
     for chunk in chunks:
