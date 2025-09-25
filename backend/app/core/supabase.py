@@ -1,5 +1,7 @@
 import os
-from supabase import create_client, Client
+
+from supabase import Client, create_client
+
 from .config import settings
 
 # Initialize Supabase client

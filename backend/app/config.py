@@ -16,7 +16,7 @@ class Settings(BaseSettings):
 
     # Base URL of this backend (e.g., Cloud Run URL) for Cloud Tasks callbacks
     backend_base_url: AnyHttpUrl | None = None
-    
+
     gemini_api_key: str  # <-- add this
     environment: str = "local"
 

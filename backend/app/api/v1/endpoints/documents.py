@@ -8,15 +8,15 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import uuid4
 
 import httpx
-from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile, Request
-from pydantic import BaseModel, HttpUrl
-
+from app.api.v1.dependencies import get_current_user
 # Local imports
 from app.core.config import settings
 from app.core.supabase import supabase
-from app.api.v1.dependencies import get_current_user
 from app.utils.clients import (fetch_bytes_from_url, get_supabase_client,
-                             upload_bytes_to_supabase_storage)
+                               upload_bytes_to_supabase_storage)
+from fastapi import (APIRouter, Body, Depends, File, HTTPException, Request,
+                     UploadFile)
+from pydantic import BaseModel, HttpUrl
 
 router = APIRouter()
 
@@ -152,21 +152,20 @@ def _is_pdf_bytes(data: bytes) -> bool:
     return data.startswith(b"%PDF-")
 
 
-
-
-
 @router.post("/upload")
-async def upload_file(file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
+async def upload_file(
+    file: UploadFile = File(...), current_user: dict = Depends(get_current_user)
+):
     """Case 1: Upload from device. Store to Supabase and record pending row."""
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Starting file upload process")
     print(f"File: {file.filename}, Content-Type: {file.content_type}")
-    
+
     # Log request headers for debugging
     from fastapi import Request
-    
+
     try:
-        
+
         # Read file content
         print("Reading file content...")
         try:
@@ -179,15 +178,15 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
             error_msg = f"Error reading file: {str(e)}"
             print(error_msg)
             raise HTTPException(status_code=400, detail=error_msg)
-            
+
         if not _is_pdf_bytes(file_bytes):
             raise HTTPException(status_code=400, detail="Invalid PDF file")
-            
+
         # Compute file hash
         content_hash = hashlib.sha256(file_bytes).hexdigest()
         file_path = f"uploads/{content_hash}.pdf"
         public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{settings.SUPABASE_BUCKET}/{file_path}"
-        
+
         # Upload to Supabase Storage directly from memory
         try:
             # First, ensure the bucket exists
@@ -199,11 +198,11 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
                     print(f"Creating bucket: {settings.SUPABASE_BUCKET}")
                     supabase.storage.create_bucket(
                         settings.SUPABASE_BUCKET,
-                        {"public": True, "file_size_limit": "50MB"}
+                        {"public": True, "file_size_limit": "50MB"},
                     )
                 else:
                     raise
-            
+
             # Upload the file
             print(f"Uploading file to {file_path}")
             # First try to remove if exists (since upsert isn't supported)
@@ -214,94 +213,105 @@ async def upload_file(file: UploadFile = File(...), current_user: dict = Depends
                 # Ignore if file doesn't exist
                 if "not found" not in str(e).lower():
                     print(f"Warning: Could not remove existing file: {e}")
-            
+
             # Upload the file
             supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
-                file_path,
-                file_bytes
+                file_path, file_bytes
             )
             print(f"Successfully uploaded file to {file_path}")
-            
+
         except Exception as e:
             print(f"Upload error: {str(e)}")
-            raise HTTPException(status_code=500, detail=f"Failed to upload file to storage: {str(e)}")
-        
+            raise HTTPException(
+                status_code=500, detail=f"Failed to upload file to storage: {str(e)}"
+            )
+
         # Create new document record with only required fields
         # Let the database handle the status with its default value
         document_data = {
-            "title": file.filename or 'Untitled Document',
+            "title": file.filename or "Untitled Document",
             "file_path": file_path,
             "public_url": public_url,
             "content_hash": content_hash,
             "original_filename": file.filename,
             "content_type": file.content_type,
             "file_size": len(file_bytes),
-            "file_type": file.content_type
+            "file_type": file.content_type,
         }
-        
+
         # Only add user_id if it's not the default user and exists
-        if current_user and current_user.get('id') and str(current_user['id']) != '00000000-0000-0000-0000-000000000000':
-            document_data["user_id"] = str(current_user['id'])  # Convert UUID to string for Supabase
+        if (
+            current_user
+            and current_user.get("id")
+            and str(current_user["id"]) != "00000000-0000-0000-0000-000000000000"
+        ):
+            document_data["user_id"] = str(
+                current_user["id"]
+            )  # Convert UUID to string for Supabase
         else:
             # Don't set user_id for default user to avoid foreign key constraint
             print("Using null user_id for default user")
-        
+
         # Try to add metadata if the column exists
         try:
             # This is a test query to check if metadata column exists
-            test_result = supabase.table("documents").select("metadata").limit(1).execute()
+            test_result = (
+                supabase.table("documents").select("metadata").limit(1).execute()
+            )
             if test_result.data:
                 document_data["metadata"] = {}
         except Exception:
             # If the query fails, metadata column probably doesn't exist
             print("Note: 'metadata' column not found in documents table")
-        
+
         # Insert document record
         result = supabase.table("documents").insert(document_data).execute()
-        
+
         if not result.data or len(result.data) == 0:
-            raise HTTPException(status_code=500, detail="Failed to create document record")
-        
-        document_id = result.data[0]['id']
-        
+            raise HTTPException(
+                status_code=500, detail="Failed to create document record"
+            )
+
+        document_id = result.data[0]["id"]
+
         # Create processing job if the table exists
         try:
             # Test if processing_jobs table exists
             test_job = supabase.table("processing_jobs").select("id").limit(1).execute()
-            
+
             # If we got here, the table exists
             job_data = {
                 "document_id": document_id,
                 "job_type": "process_document",
                 "status": "pending",
-                "progress": 0
+                "progress": 0,
             }
-            
+
             job_result = supabase.table("processing_jobs").insert(job_data).execute()
-            
+
             if not job_result.data or len(job_result.data) == 0:
                 print("Warning: Failed to create processing job")
             else:
                 print(f"Created processing job: {job_result.data[0]['id']}")
-                
+
         except Exception as e:
             print(f"Note: Could not create processing job - {str(e)}")
             print("Continuing without processing job creation")
-        
+
         return {
             "id": document_id,
             "status": "uploaded",
             "status": "processing",
-            "job_id": job_result.data[0]['id'] if job_result.data else None
+            "job_id": job_result.data[0]["id"] if job_result.data else None,
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
         print(f"Error in upload_file: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Failed to process file: {str(e)}")
     finally:
-        print("="*50 + "\n")
+        print("=" * 50 + "\n")
 
 
 @router.post("/upload_link")

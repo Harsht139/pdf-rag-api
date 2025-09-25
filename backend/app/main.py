@@ -1,17 +1,15 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-
-# Import config
-from app.core.config import settings
-
 # Import routers
 from app.api.v1.api import api_router
+# Import config
+from app.core.config import settings
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 # Initialize FastAPI app
 app = FastAPI(
     title="PDF RAG API",
     version="1.0.0",
-    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.API_V1_STR else None
+    openapi_url=f"{settings.API_V1_STR}/openapi.json" if settings.API_V1_STR else None,
 )
 
 
@@ -32,8 +30,8 @@ async def test_cors():
         "cors_headers": {
             "Access-Control-Allow-Origin": "*",
             "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*"
-        }
+            "Access-Control-Allow-Headers": "*",
+        },
     }
 
 
@@ -46,6 +44,7 @@ origins = [
     "http://127.0.0.1:3000",  # Alternative localhost
 ]
 
+
 # Add middleware with detailed logging
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -55,6 +54,7 @@ async def log_requests(request: Request, call_next):
     print(f"Response status: {response.status_code}")
     print(f"Response headers: {dict(response.headers)}")
     return response
+
 
 # CORS middleware
 app.add_middleware(
