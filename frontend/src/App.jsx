@@ -112,9 +112,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Toaster />
       <header className="bg-white shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <h1 className="text-2xl font-bold text-gray-900">PDF Chat Assistant</h1>
+        <div className="max-w-7xl mx-auto py-4 px-4 sm:px-6 lg:px-8 flex items-center">
+          <FileText className="h-8 w-8 text-indigo-600 mr-3" />
+          <h1 className="text-2xl font-bold text-gray-900">PDF RAG Chat</h1>
         </div>
       </header>
 

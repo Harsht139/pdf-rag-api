@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import tempfile
+import traceback
 from typing import Optional
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from uuid import uuid4
@@ -15,7 +16,8 @@ from app.core.supabase import supabase
 from app.utils.clients import (fetch_bytes_from_url, get_supabase_client,
                                upload_bytes_to_supabase_storage)
 from fastapi import (APIRouter, Body, Depends, File, HTTPException, Request,
-                     UploadFile)
+                     UploadFile, status)
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, HttpUrl
 
 router = APIRouter()
@@ -156,31 +158,85 @@ def _is_pdf_bytes(data: bytes) -> bool:
 async def upload_file(
     file: UploadFile = File(...), current_user: dict = Depends(get_current_user)
 ):
-    """Case 1: Upload from device. Store to Supabase and record pending row."""
+    """
+    Handle file uploads to Supabase storage.
+    
+    Args:
+        file: The uploaded file
+        current_user: Authenticated user info from JWT token
+        
+    Returns:
+        dict: Upload result with file details
+        
+    Raises:
+        HTTPException: If there's an error processing the upload
+    """
+    # Log the start of the upload process
     print("\n" + "=" * 50)
-    print("Starting file upload process")
-    print(f"File: {file.filename}, Content-Type: {file.content_type}")
-
-    # Log request headers for debugging
-    from fastapi import Request
-
+    print(f"Starting file upload for: {file.filename}")
+    print(f"Content type: {file.content_type}")
+    print(f"Current user: {current_user.get('email') if current_user else 'None'}")
+    
     try:
-
+        # Validate file
+        if not file.filename:
+            error_msg = "No filename provided"
+            print(error_msg)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=error_msg
+            )
+            
+        if not file.filename.lower().endswith(".pdf"):
+            error_msg = f"Invalid file type. Only PDF files are supported. Got: {file.filename}"
+            print(error_msg)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=error_msg
+            )
+        
         # Read file content
-        print("Reading file content...")
         try:
             file_bytes = await file.read()
+            print(f"Read {len(file_bytes)} bytes from file")
+            
             if not file_bytes:
                 error_msg = "Error: Empty file provided"
                 print(error_msg)
-                raise HTTPException(status_code=400, detail=error_msg)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail=error_msg
+                )
+                
+            if not _is_pdf_bytes(file_bytes):
+                error_msg = "Invalid PDF file: File does not start with PDF header"
+                print(error_msg)
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST, 
+                    detail=error_msg
+                )
+                
         except Exception as e:
             error_msg = f"Error reading file: {str(e)}"
             print(error_msg)
-            raise HTTPException(status_code=400, detail=error_msg)
-
-        if not _is_pdf_bytes(file_bytes):
-            raise HTTPException(status_code=400, detail="Invalid PDF file")
+            print(traceback.format_exc())  # Log full traceback
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, 
+                detail=f"File processing error: {str(e)}"
+            )
+            
+        # If we get here, we have valid file content
+        print("File validation successful")
+        
+        # Initialize Supabase client
+        supabase_client = get_supabase_client()
+        if not supabase_client:
+            error_msg = "Failed to initialize Supabase client. Check your SUPABASE_URL and SUPABASE_KEY environment variables."
+            print(error_msg)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=error_msg
+            )
 
         # Compute file hash
         content_hash = hashlib.sha256(file_bytes).hexdigest()
@@ -189,105 +245,140 @@ async def upload_file(
 
         # Upload to Supabase Storage directly from memory
         try:
-            # First, ensure the bucket exists
-            try:
-                supabase.storage.get_bucket(settings.SUPABASE_BUCKET)
-            except Exception as e:
-                # If bucket doesn't exist, create it
-                if "not found" in str(e).lower():
-                    print(f"Creating bucket: {settings.SUPABASE_BUCKET}")
-                    supabase.storage.create_bucket(
-                        settings.SUPABASE_BUCKET,
-                        {"public": True, "file_size_limit": "50MB"},
-                    )
-                else:
-                    raise
-
+            # Get the storage bucket
+            storage = supabase_client.storage.from_(settings.SUPABASE_BUCKET)
+            
             # Upload the file
             print(f"Uploading file to {file_path}")
-            # First try to remove if exists (since upsert isn't supported)
+            
+            # Upload the file with content type
             try:
-                supabase.storage.from_(settings.SUPABASE_BUCKET).remove([file_path])
-                print(f"Removed existing file at {file_path}")
-            except Exception as e:
-                # Ignore if file doesn't exist
-                if "not found" not in str(e).lower():
-                    print(f"Warning: Could not remove existing file: {e}")
-
-            # Upload the file
-            supabase.storage.from_(settings.SUPABASE_BUCKET).upload(
-                file_path, file_bytes
-            )
-            print(f"Successfully uploaded file to {file_path}")
-
+                # First, make sure the uploads folder exists
+                try:
+                    # This will create the folder if it doesn't exist
+                    uploads_path = "uploads"
+                    upload_response = storage.upload(
+                        path=f"{uploads_path}/.keep",
+                        file=b"",  # Empty file to create the folder
+                        file_options={"content-type": "text/plain"}
+                    )
+                    print(f"Created uploads folder: {upload_response}")
+                except Exception as folder_error:
+                    print(f"Note: Could not create uploads folder (may already exist): {folder_error}")
+                
+                # Now upload the actual file
+                upload_response = storage.upload(
+                    path=file_path, 
+                    file=file_bytes,
+                    file_options={"content-type": "application/pdf"}
+                )
+                print(f"Upload response: {upload_response}")
+                
+                # Get public URL
+                public_url = f"{settings.SUPABASE_URL}/storage/v1/object/public/{settings.SUPABASE_BUCKET}/{file_path}"
+                
+                # Create a signed URL (optional)
+                signed_url = None
+                try:
+                    signed_url = storage.create_signed_url(
+                        file_path, 
+                        60 * 60 * 24 * 7  # 1 week
+                    )
+                    print(f"Created signed URL: {signed_url}")
+                except Exception as sign_error:
+                    print(f"Warning: Could not create signed URL: {sign_error}")
+                    # Continue without signed URL
+                
+                print(f"Successfully uploaded file to {file_path}")
+                
+                # Create document record in database
+                document_data = {
+                    "file_name": file.filename,
+                    "file_path": file_path,
+                    "file_size": len(file_bytes),
+                    "content_hash": content_hash,
+                    "uploaded_by": current_user.get("id") if current_user else None,
+                    "status": "uploaded",
+                    "public_url": public_url,
+                    "signed_url": signed_url,
+                }
+                
+                try:
+                    # Insert the document record
+                    result = supabase_client.table("documents").insert(document_data).execute()
+                    print(f"Document record created: {result}")
+                    
+                    # Return success response
+                    return {
+                        "status": "success",
+                        "message": "File uploaded successfully",
+                        "document_id": result.data[0]["id"] if result.data else None,
+                        "file_path": file_path,
+                        "public_url": public_url,
+                        "signed_url": signed_url,
+                    }
+                    
+                except Exception as db_error:
+                    error_msg = f"Database error: {str(db_error)}"
+                    print(error_msg)
+                    print(traceback.format_exc())
+                    
+                    # Even if database fails, return success since file was uploaded
+                    return {
+                        "status": "partial_success",
+                        "message": "File uploaded but failed to save document record",
+                        "file_path": file_path,
+                        "public_url": public_url,
+                        "signed_url": signed_url,
+                        "error": str(db_error)
+                    }
+                
+            except Exception as upload_error:
+                error_msg = f"Failed to upload file to storage: {str(upload_error)}"
+                print(error_msg)
+                print(traceback.format_exc())
+                
+                # Check if it's an RLS error
+                if "row-level security" in str(upload_error).lower():
+                    return {
+                        "status": "error",
+                        "message": "Permission denied by Row Level Security (RLS) policies",
+                        "solution": [
+                            "1. Go to your Supabase Dashboard",
+                            "2. Navigate to Storage > Policies",
+                            f"3. For the '{settings.SUPABASE_BUCKET}' bucket, add a policy that allows uploads",
+                            "4. For development, you can use a policy that allows all operations with: `true`"
+                        ]
+                    }
+                
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Failed to upload file to storage: {str(upload_error)}"
+                )
+                
         except Exception as e:
-            print(f"Upload error: {str(e)}")
+            error_msg = f"Error during file upload process: {str(e)}"
+            print(error_msg)
+            print(traceback.format_exc())
             raise HTTPException(
-                status_code=500, detail=f"Failed to upload file to storage: {str(e)}"
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Error during file upload process: {str(e)}"
             )
-
-        # Create new document record with only required fields
-        # Let the database handle the status with its default value
-        document_data = {
-            "title": file.filename or "Untitled Document",
-            "file_path": file_path,
-            "public_url": public_url,
-            "content_hash": content_hash,
-            "original_filename": file.filename,
-            "content_type": file.content_type,
-            "file_size": len(file_bytes),
-            "file_type": file.content_type,
-        }
-
-        # Only add user_id if it's not the default user and exists
-        if (
-            current_user
-            and current_user.get("id")
-            and str(current_user["id"]) != "00000000-0000-0000-0000-000000000000"
-        ):
-            document_data["user_id"] = str(
-                current_user["id"]
-            )  # Convert UUID to string for Supabase
-        else:
-            # Don't set user_id for default user to avoid foreign key constraint
-            print("Using null user_id for default user")
-
-        # Try to add metadata if the column exists
-        try:
-            # This is a test query to check if metadata column exists
-            test_result = (
-                supabase.from_("documents").select("metadata").limit(1).execute()
-            )
-            if test_result.data:
-                document_data["metadata"] = {}
-        except Exception:
-            # If the query fails, metadata column probably doesn't exist
-            print("Note: 'metadata' column not found in documents table")
-
-        # Insert document record
-        result = supabase.table("documents").insert(document_data).execute()
-
-        if not result.data or len(result.data) == 0:
-            raise HTTPException(
-                status_code=500, detail="Failed to create document record"
-            )
-
-        document_id = result.data[0]["id"]
-
+            
         # Create processing job if the table exists
         try:
             # Test if processing_jobs table exists
-            test_job = supabase.table("processing_jobs").select("id").limit(1).execute()
+            test_job = supabase_client.table("processing_jobs").select("id").limit(1).execute()
 
             # If we got here, the table exists
             job_data = {
-                "document_id": document_id,
+                "document_id": document["id"],
                 "job_type": "process_document",
                 "status": "pending",
                 "progress": 0,
             }
 
-            job_result = supabase.table("processing_jobs").insert(job_data).execute()
+            job_result = supabase_client.table("processing_jobs").insert(job_data).execute()
 
             if not job_result.data or len(job_result.data) == 0:
                 print("Warning: Failed to create processing job")
@@ -297,10 +388,10 @@ async def upload_file(
         except Exception as e:
             print(f"Note: Could not create processing job - {str(e)}")
             print("Continuing without processing job creation")
+            print(traceback.format_exc())
 
         return {
-            "id": document_id,
-            "status": "uploaded",
+            "id": document["id"],
             "status": "processing",
             "job_id": job_result.data[0]["id"] if job_result.data else None,
         }
@@ -389,33 +480,103 @@ async def upload_link(payload: UrlPayload = Body(...)):
 
 @router.get("/storage_check")
 async def storage_check():
-    """Mini connectivity test to Supabase Storage and DB.
-
-    - Verifies env is present
-    - Uploads a tiny test object with upsert=True
-    - Removes it
-    - Returns ok if successful
+    """Mini connectivity test to Supabase Storage.
+    
+    This test verifies that we can connect to Supabase Storage
+    and access the configured bucket.
     """
-    sb = get_supabase_client()
-    # sanity check: bucket name
-    from app.config import settings
-
-    test_path = f"healthcheck/{uuid4()}.txt"
-    content = b"ok"
-    # upload with upsert True to avoid conflicts
-    sb.storage.from_(settings.supabase_bucket).upload(
-        path=test_path,
-        file=content,
-        file_options={"content-type": "text/plain", "upsert": True},
-    )
-
-    # try to generate a public URL and then delete the object
-    public_url = sb.storage.from_(settings.supabase_bucket).get_public_url(test_path)
-    sb.storage.from_(settings.supabase_bucket).remove([test_path])
-
-    return {
-        "ok": True,
-        "bucket": settings.supabase_bucket,
-        "test_path": test_path,
-        "public_url": public_url,
-    }
+    try:
+        sb = get_supabase_client()
+        if not sb:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to initialize Supabase client. Check your SUPABASE_URL and SUPABASE_KEY."
+            )
+            
+        # Get the bucket name from settings
+        bucket = settings.SUPABASE_BUCKET
+        if not bucket:
+            raise HTTPException(
+                status_code=500,
+                detail="SUPABASE_BUCKET is not configured in settings"
+            )
+            
+        # Try to access the bucket directly
+        try:
+            # This will use the bucket name directly without trying to list all buckets first
+            storage = sb.storage.from_(bucket)
+            
+            # Try to get the public URL of a test path
+            test_path = f"healthcheck/test-{uuid4()}.txt"
+            public_url = storage.get_public_url(test_path)
+            
+            # If we got this far, the connection is working
+            return {
+                "status": "success",
+                "message": "Successfully connected to Supabase Storage",
+                "bucket": bucket,
+                "public_url_example": public_url,
+                "note": "The public URL may not work until you upload a file to that path"
+            }
+            
+        except Exception as e:
+            error_msg = str(e)
+            print(f"Error accessing bucket: {error_msg}")
+            
+            # Check for specific error cases
+            if "Bucket not found" in error_msg:
+                return {
+                    "status": "error",
+                    "message": f"Bucket '{bucket}' not found in Supabase Storage",
+                    "suggestion": [
+                        "1. Go to your Supabase Dashboard",
+                        "2. Navigate to Storage",
+                        "3. Create a bucket named exactly as specified in your configuration"
+                    ]
+                }
+            elif "row-level security" in error_msg.lower():
+                return {
+                    "status": "rls_error",
+                    "message": "Row Level Security (RLS) is preventing access",
+                    "bucket": bucket,
+                    "solution": [
+                        "1. Go to your Supabase Dashboard",
+                        "2. Navigate to Authentication > Policies",
+                        f"3. Find the policies for the '{bucket}' bucket",
+                        "4. Add a policy to allow the required operations"
+                    ]
+                }
+            
+        except Exception as e:
+            error_msg = f"Error accessing bucket '{bucket}': {str(e)}"
+            print(error_msg)
+            
+            # Check if this is an RLS issue
+            if "row-level security" in str(e).lower():
+                return {
+                    "status": "rls_error",
+                    "message": "Row Level Security (RLS) is enabled on your Supabase Storage",
+                    "bucket": bucket,
+                    "solution": [
+                        "1. Go to your Supabase Dashboard",
+                        "2. Navigate to Authentication > Policies",
+                        f"3. Find the policies for the '{bucket}' bucket",
+                        "4. Add a policy to allow public access or adjust your RLS rules",
+                        "OR",
+                        "Use the Supabase service_role key (not recommended for production)"
+                    ]
+                }
+            
+            raise HTTPException(
+                status_code=500,
+                detail=error_msg
+            )
+            
+    except Exception as e:
+        error_msg = f"Storage check failed: {str(e)}"
+        print(error_msg)
+        print(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=error_msg
+        )

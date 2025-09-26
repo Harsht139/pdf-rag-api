@@ -18,17 +18,19 @@ def get_supabase_client() -> Client:
     if not settings.supabase_url or not settings.supabase_key:
         raise RuntimeError("Supabase credentials not configured")
 
-    try:
-        # Try the simplest initialization first
-        return create_client(settings.supabase_url, settings.supabase_key)
-    except TypeError as e:
-        if "unexpected keyword argument 'http_client'" in str(e):
-            # Fall back to initialization without http_client
-            from supabase import ClientOptions
-
-            options = ClientOptions()
-            return create_client(settings.supabase_url, settings.supabase_key, options)
-        raise
+    # Initialize with basic configuration
+    client = create_client(settings.supabase_url, settings.supabase_key)
+    
+    # Set headers directly on the storage client
+    if hasattr(client, 'storage') and hasattr(client.storage, '_client'):
+        client.storage._client.headers.update({
+            'apikey': settings.supabase_key,
+            'Authorization': f'Bearer {settings.supabase_key}'
+        })
+    
+    # The auth client will handle its own headers
+    
+    return client
 
 
 def upload_bytes_to_supabase_storage(

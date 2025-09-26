@@ -51,10 +51,7 @@ async def create_chat_session(
     # Verify document exists
     sb = get_supabase_client()
     doc = (
-        sb.table("documents")
-        .select("id")
-        .eq("id", session_data.document_id)
-        .execute()
+        sb.table("documents").select("id").eq("id", session_data.document_id).execute()
     )
     if not doc.data or len(doc.data) == 0:
         raise HTTPException(status_code=404, detail="Document not found")

@@ -1,4 +1,8 @@
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+// Using Vite's environment variables - make sure VITE_API_URL is set in your .env file
+const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
+// Log the base URL for debugging - remove in production
+console.log('API Base URL:', BASE_URL);
 
 export async function uploadPdfFile(file) {
   const form = new FormData();

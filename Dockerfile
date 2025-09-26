@@ -28,12 +28,19 @@ COPY backend/app ./app
 RUN mkdir -p /app/logs /app/temp
 
 # Set environment variables
-ENV HOST=0.0.0.0
-ENV PORT=8080
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
+ENV HOST=0.0.0.0
 
-# Expose Cloud Run port
-EXPOSE 8080
+# Use PORT environment variable provided by Cloud Run, default to 8080
+ENV PORT=${PORT:-8080}
+
+# Expose the port the app runs on
+EXPOSE $PORT
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:${PORT}/health || exit 1
 
 # Start FastAPI
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD exec uvicorn app.main:app --host $HOST --port $PORT --workers 1
