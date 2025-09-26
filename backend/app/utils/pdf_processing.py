@@ -18,7 +18,7 @@ def generate_embeddings(text):
 
 def store_embeddings(pdf_id, embeddings_list):
     # Store in Supabase table
-    from app.utils.supabase_client import supabase
+    from app.core.supabase import get_supabase_client
 
     for emb in embeddings_list:
         supabase.table("pdf_embeddings").insert(

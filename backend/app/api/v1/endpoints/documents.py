@@ -256,7 +256,7 @@ async def upload_file(
         try:
             # This is a test query to check if metadata column exists
             test_result = (
-                supabase.table("documents").select("metadata").limit(1).execute()
+                supabase.from_("documents").select("metadata").limit(1).execute()
             )
             if test_result.data:
                 document_data["metadata"] = {}

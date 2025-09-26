@@ -8,7 +8,7 @@ RUN apt-get update && \
     apt-get install -y gcc libpq-dev && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
+# Copy and install requirements
 COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
@@ -23,15 +23,17 @@ COPY --from=builder /install /usr/local
 # Copy app code
 COPY backend/app ./app
 
-# Create logs/temp directories
+# Environment variables should be provided at runtime
+
 RUN mkdir -p /app/logs /app/temp
 
 # Set environment variables
 ENV HOST=0.0.0.0
+ENV PORT=8080
 ENV PYTHONPATH=/app
 
 # Expose Cloud Run port
 EXPOSE 8080
 
-# Start FastAPI using dynamic PORT
-CMD ["sh", "-c", "cd /app && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Start FastAPI
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]

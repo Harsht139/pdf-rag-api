@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 
 # Import your Supabase client
-from app.core.supabase import supabase
+from app.core.supabase import get_supabase_client
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
@@ -49,8 +49,9 @@ async def create_chat_session(
     Create a new chat session for a document.
     """
     # Verify document exists
+    sb = get_supabase_client()
     doc = (
-        supabase.table("documents")
+        sb.table("documents")
         .select("id")
         .eq("id", session_data.document_id)
         .execute()

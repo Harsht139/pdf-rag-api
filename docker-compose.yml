@@ -2,16 +2,16 @@ version: '3.8'
 services:
   backend:
     build:
-      context: ./backend
+      context: .
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
     environment:
       - ENVIRONMENT=development
     env_file:
-      - .env
+      - ./backend/.env
     volumes:
-      - ./backend:/app
+      - ./backend/app:/app/app
       - ./logs:/app/logs
       - ./temp:/app/temp
     depends_on:

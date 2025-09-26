@@ -3,16 +3,23 @@
 import os
 
 import requests
+import hashlib
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # store your API key in env
 
 
 def get_embedding(text: str) -> list[float]:
     """
-    Sends text to Gemini API and returns the embedding vector.
+    Get embeddings for the given text using Gemini API.
+    Returns a list of floats representing the embedding vector.
     """
     if not GEMINI_API_KEY:
-        raise ValueError("GEMINI_API_KEY is not set in environment variables")
+        print("WARNING: GEMINI_API_KEY is not set. Using mock embeddings for local development.")
+        # Return a mock embedding for local development
+        hash_obj = hashlib.md5(text.encode())
+        hash_bytes = hash_obj.digest()
+        # Convert first 8 bytes to float values (normalized to 0-1 range)
+        return [int(b) / 255.0 for b in hash_bytes[:8]]
 
     url = "https://api.gemini.com/v1/embeddings"  # replace with actual Gemini endpoint
     payload = {

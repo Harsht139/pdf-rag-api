@@ -18,8 +18,8 @@ class Settings(BaseSettings):
     SUPABASE_KEY: str = ""
     SUPABASE_BUCKET: str = "documents"
 
-    # CORS
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
+    # CORS - parse comma-separated string from .env
+    BACKEND_CORS_ORIGINS: List[str] = []
     BACKEND_BASE_URL: str = "http://localhost:8000"
 
     # File Uploads
@@ -37,8 +37,23 @@ class Settings(BaseSettings):
     # Gemini AI
     GEMINI_API_KEY: str = ""
 
+    # Additional fields from .env
+    SECRET_KEY: str = ""
+    GOOGLE_CLOUD_PROJECT: str = ""
+
+    @property
+    def cors_origins_list(self) -> List[str]:
+        """Parse BACKEND_CORS_ORIGINS from .env file"""
+        if isinstance(self.BACKEND_CORS_ORIGINS, str) and self.BACKEND_CORS_ORIGINS:
+            return [origin.strip() for origin in self.BACKEND_CORS_ORIGINS.split(",")]
+        elif isinstance(self.BACKEND_CORS_ORIGINS, list):
+            return self.BACKEND_CORS_ORIGINS
+        else:
+            return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
     class Config:
         case_sensitive = True
+        # Look for .env file in the parent directory (backend/.env)
         env_file = ".env"
         env_file_encoding = "utf-8"
         extra = "ignore"  # This will ignore extra env vars without raising errors
