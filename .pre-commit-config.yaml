@@ -1,25 +1,30 @@
+# Pre-commit hooks configuration
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0  # Use latest stable version
-    hooks:
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: check-yaml
-      - id: check-added-large-files
-
+  # Black for code formatting
   - repo: https://github.com/psf/black
-    rev: 25.9.0  # Use latest stable Black version
+    rev: 23.9.1
     hooks:
       - id: black
-        language_version: python3.12
+        language_version: python3
 
-  - repo: https://github.com/PyCQA/isort
-    rev: 6.0.1  # Use latest stable isort version
+  # isort for import sorting
+  - repo: https://github.com/pycqa/isort
+    rev: 5.12.0
     hooks:
       - id: isort
-        language_version: python3.12
+        language_version: python3
+
+  # flake8 for linting
   - repo: https://github.com/pycqa/flake8
     rev: 6.1.0
     hooks:
       - id: flake8
-        language_version: python3.12
+        language_version: python3
+
+  # Check for trailing whitespace
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
