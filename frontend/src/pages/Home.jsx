@@ -43,23 +43,23 @@ const Home = () => {
           <div className="bg-white rounded-lg shadow-md p-6">
             <h2 className="text-xl font-semibold mb-4">Uploaded Document</h2>
             <div className="flex items-center space-x-2">
-              <svg 
-                className="w-6 h-6 text-red-500" 
-                fill="none" 
-                stroke="currentColor" 
-                viewBox="0 0 24 24" 
+              <svg
+                className="w-6 h-6 text-red-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
                 xmlns="http://www.w3.org/2000/svg"
               >
-                <path 
-                  strokeLinecap="round" 
-                  strokeLinejoin="round" 
-                  strokeWidth={2} 
-                  d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" 
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"
                 />
               </svg>
-              <a 
-                href={documentUrl} 
-                target="_blank" 
+              <a
+                href={documentUrl}
+                target="_blank"
                 rel="noopener noreferrer"
                 className="text-blue-600 hover:text-blue-800 hover:underline font-medium text-lg"
               >
@@ -72,7 +72,7 @@ const Home = () => {
           </div>
         )}
       </div>
-      
+
       <div className="w-full md:w-1/2">
         <div className="bg-gray-100 rounded-lg shadow-md p-6 h-full">
           <h2 className="text-xl font-semibold mb-4">Chat with your PDF</h2>

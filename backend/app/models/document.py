@@ -1,14 +1,17 @@
-from pydantic import BaseModel, Field, HttpUrl
 from datetime import datetime
-from typing import Optional, List, Union
 from enum import Enum
+from typing import List, Optional, Union
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, Field, HttpUrl
+
 
 class DocumentStatus(str, Enum):
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
 
 class DocumentBase(BaseModel):
     filename: str
@@ -18,8 +21,10 @@ class DocumentBase(BaseModel):
     file_type: str = "application/pdf"
     status: DocumentStatus = DocumentStatus.PENDING
 
+
 class DocumentCreate(DocumentBase):
     pass
+
 
 class DocumentInDB(DocumentBase):
     id: UUID = Field(default_factory=uuid4)
@@ -29,10 +34,12 @@ class DocumentInDB(DocumentBase):
     class Config:
         from_attributes = True
 
+
 # Response models
 class DocumentResponse(DocumentInDB):
     class Config:
         from_attributes = True
+
 
 class DocumentList(BaseModel):
     documents: List[DocumentResponse]

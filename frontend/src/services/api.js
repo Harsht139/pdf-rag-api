@@ -11,12 +11,12 @@ const handleResponse = async (response) => {
 export const uploadDocument = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
-  
+
   const response = await fetch(`${API_BASE_URL}/api/v1/documents/upload`, {
     method: 'POST',
     body: formData,
   });
-  
+
   return handleResponse(response);
 };
 
@@ -24,7 +24,7 @@ export const ingestFromUrl = async (url) => {
   const response = await fetch(`${API_BASE_URL}/api/v1/documents/ingest/url?url=${encodeURIComponent(url)}`, {
     method: 'POST',
   });
-  
+
   return handleResponse(response);
 };
 
@@ -42,7 +42,7 @@ export const deleteDocument = async (documentId) => {
   const response = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}`, {
     method: 'DELETE',
   });
-  
+
   return handleResponse(response);
 };
 
@@ -57,6 +57,6 @@ export const sendChatMessage = async (messages, documentId) => {
       document_id: documentId,
     }),
   });
-  
+
   return handleResponse(response);
 };

@@ -55,11 +55,11 @@ const PdfUpload = ({ onUploadStart, onUploadSuccess, isProcessing }) => {
 
     onUploadStart();
     setUploadProgress(50);
-    
+
     try {
       const data = await ingestFromUrl(url);
       setUploadProgress(100);
-      
+
       onUploadSuccess({
         id: data.id,
         file_url: data.file_url,
@@ -79,11 +79,11 @@ const PdfUpload = ({ onUploadStart, onUploadSuccess, isProcessing }) => {
 
     onUploadStart();
     setUploadProgress(50);
-    
+
     try {
       const data = await uploadDocument(file);
       setUploadProgress(100);
-      
+
       onUploadSuccess({
         id: data.id,
         file_url: data.file_url,
