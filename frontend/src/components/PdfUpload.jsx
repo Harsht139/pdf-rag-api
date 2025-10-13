@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { uploadDocument } from '../services/api';
+import { uploadDocument, ingestFromUrl } from '../services/api';
 
 const PdfUpload = ({ onUploadStart, onUploadSuccess, isProcessing }) => {
   const [dragActive, setDragActive] = useState(false);
@@ -49,25 +49,28 @@ const PdfUpload = ({ onUploadStart, onUploadSuccess, isProcessing }) => {
     }
   };
 
-  const handleUrlSubmit = (e) => {
+  const handleUrlSubmit = async (e) => {
     e.preventDefault();
     if (!url) return;
 
-    // Simulate upload progress
     onUploadStart();
-    let progress = 0;
-    const interval = setInterval(() => {
-      progress += Math.random() * 20;
-      if (progress >= 95) {
-        clearInterval(interval);
-        setTimeout(() => {
-          setUploadProgress(100);
-          onUploadSuccess('doc_' + Math.random().toString(36).substr(2, 9));
-        }, 500);
-      } else {
-        setUploadProgress(progress);
-      }
-    }, 200);
+    setUploadProgress(50);
+    
+    try {
+      const data = await ingestFromUrl(url);
+      setUploadProgress(100);
+      
+      onUploadSuccess({
+        id: data.id,
+        file_url: data.file_url,
+        filename: data.filename,
+        status: 'completed'
+      });
+    } catch (error) {
+      console.error('URL processing failed:', error);
+      alert(error.message || 'Failed to process URL. Please try again.');
+      setUploadProgress(0);
+    }
   };
 
   const handleFileSubmit = async (e) => {
@@ -75,11 +78,18 @@ const PdfUpload = ({ onUploadStart, onUploadSuccess, isProcessing }) => {
     if (!file) return;
 
     onUploadStart();
+    setUploadProgress(50);
     
     try {
-      const response = await uploadDocument(file);
+      const data = await uploadDocument(file);
       setUploadProgress(100);
-      onUploadSuccess(response.document_id);
+      
+      onUploadSuccess({
+        id: data.id,
+        file_url: data.file_url,
+        filename: data.filename,
+        status: 'completed'
+      });
     } catch (error) {
       console.error('Upload failed:', error);
       alert('Failed to upload file. Please try again.');

@@ -1,24 +1,53 @@
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+const handleResponse = async (response) => {
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.detail || 'An error occurred');
+  }
+  return data;
+};
 
 export const uploadDocument = async (file) => {
   const formData = new FormData();
   formData.append('file', file);
   
-  const response = await fetch(`${API_BASE_URL}/api/documents/upload`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/upload`, {
     method: 'POST',
     body: formData,
   });
   
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to upload document');
-  }
+  return handleResponse(response);
+};
+
+export const ingestFromUrl = async (url) => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/ingest/url?url=${encodeURIComponent(url)}`, {
+    method: 'POST',
+  });
   
-  return response.json();
+  return handleResponse(response);
+};
+
+export const getDocument = async (documentId) => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}`);
+  return handleResponse(response);
+};
+
+export const listDocuments = async () => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents`);
+  return handleResponse(response);
+};
+
+export const deleteDocument = async (documentId) => {
+  const response = await fetch(`${API_BASE_URL}/api/v1/documents/${documentId}`, {
+    method: 'DELETE',
+  });
+  
+  return handleResponse(response);
 };
 
 export const sendChatMessage = async (messages, documentId) => {
-  const response = await fetch(`${API_BASE_URL}/api/chat`, {
+  const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -28,11 +57,6 @@ export const sendChatMessage = async (messages, documentId) => {
       document_id: documentId,
     }),
   });
-
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.detail || 'Failed to send message');
-  }
-
-  return response.json();
+  
+  return handleResponse(response);
 };

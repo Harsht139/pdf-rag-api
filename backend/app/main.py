@@ -1,60 +1,50 @@
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional
+import uvicorn
 import os
+from dotenv import load_dotenv
 
-app = FastAPI(title="PDF RAG API")
+# Load environment variables
+load_dotenv()
 
-# CORS middleware to allow frontend connection
+# Import API router
+from app.api.v1 import api_router
+
+# Create FastAPI app
+app = FastAPI(
+    title="PDF RAG API",
+    description="API for uploading and processing PDF documents with RAG capabilities",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
+)
+
+# CORS middleware configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Your frontend URL
+    allow_origins=["http://localhost:3000"],  # Frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Models
-class ChatMessage(BaseModel):
-    role: str  # 'user' or 'assistant'
-    content: str
+# Include API router
+app.include_router(api_router, prefix="/api/v1")
 
-class ChatRequest(BaseModel):
-    messages: List[ChatMessage]
-    document_id: Optional[str] = None
-
-# Temporary storage (replace with Supabase later)
-documents_store = {}
-
-@app.post("/api/documents/upload")
-async def upload_document(file: UploadFile):
-    """Handle PDF uploads"""
-    if not file.filename.endswith('.pdf'):
-        raise HTTPException(400, "Only PDF files are supported")
-    
-    # In a real app, save to Supabase storage and process the PDF
-    doc_id = f"doc_{len(documents_store) + 1}"
-    documents_store[doc_id] = {
-        "filename": file.filename,
-        "content": "[PDF content would be processed here]"
-    }
-    
-    return {"document_id": doc_id, "filename": file.filename}
-
-@app.post("/api/chat")
-async def chat(chat_request: ChatRequest):
-    """Handle chat messages"""
-    # In a real app, this would use RAG to generate a response
-    last_message = chat_request.messages[-1].content
-    
-    return {
-        "message": {
-            "role": "assistant",
-            "content": f"You asked about: {last_message}"
-        }
-    }
-
-@app.get("/api/health")
+# Health check endpoint
+@app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "service": "pdf-rag-api",
+        "version": "1.0.0"
+    }
+
+# Run the application
+if __name__ == "__main__":
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=True
+    )
