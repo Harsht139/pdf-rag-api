@@ -89,6 +89,11 @@ deployment/secrets/
 *.key
 *.tfvars
 
+# Backend local/deploy Makefile
+backend/Makefile
+Makefile
+Makefile
+
 # Terraform
 .terraform/
 .terraform.*
