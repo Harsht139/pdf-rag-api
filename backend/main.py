@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 # Import routers
 try:
     logger.info("Importing routers...")
-    from app.api.v1.endpoints import documents, process
+    from app.api.v1.endpoints import documents, process, chat
     logger.info("Routers imported successfully")
 except Exception as e:
     logger.error(f"Error importing routers: {str(e)}")
@@ -67,6 +67,7 @@ try:
     logger.info("Including API routers...")
     app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
     app.include_router(process.router, prefix="/api/v1/process", tags=["process"])
+    app.include_router(chat.router, prefix="/api/v1/chat", tags=["chat"])
     logger.info("API routers included successfully")
 except Exception as e:
     logger.error(f"Error including API routers: {str(e)}")

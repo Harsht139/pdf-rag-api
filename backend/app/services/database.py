@@ -60,7 +60,8 @@ class DatabaseService:
         self, 
         document_id: str, 
         status: str, 
-        error_message: Optional[str] = None
+        error_message: Optional[str] = None,
+        allow_missing: bool = False
     ) -> bool:
         """Update document status and error message if provided
         
@@ -68,18 +69,20 @@ class DatabaseService:
             document_id: The ID of the document to update
             status: The new status (should be a valid DocumentStatus value)
             error_message: Optional error message to store
+            allow_missing: If True, don't raise an exception if document is not found
             
         Returns:
-            bool: True if the update was successful, False otherwise
-            
-        Raises:
-            Exception: If there's an error updating the document
+            bool: True if the update was successful, False if document not found or update failed
         """
         try:
             # First, get the current document to check its structure
             current_doc = await self.get_document(document_id)
             if not current_doc:
-                raise ValueError(f"Document with ID {document_id} not found")
+                msg = f"Document with ID {document_id} not found"
+                if allow_missing:
+                    logger.warning(f"{msg} - but continuing as allow_missing=True")
+                    return False
+                raise ValueError(msg)
                 
             # Prepare the update data
             update_data = {
@@ -114,7 +117,9 @@ class DatabaseService:
         except Exception as e:
             error_msg = f"Error updating document status for {document_id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            raise Exception(error_msg)
+            if allow_missing and "not found" in str(e).lower():
+                return False
+            raise
             
     async def create_chunk(
         self, 
@@ -171,6 +176,81 @@ class DatabaseService:
         except Exception as e:
             raise Exception(f"Error deleting document chunks: {str(e)}")
             
+    async def search_chunks(
+        self,
+        document_id: str,
+        query_embedding: List[float],
+        limit: int = 5,
+        similarity_threshold: float = 0.5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for document chunks using vector similarity.
+        
+        Args:
+            document_id: The ID of the document to search within
+            query_embedding: The embedding vector of the query
+            limit: Maximum number of results to return
+            similarity_threshold: Minimum similarity score (0-1) for results
+            
+        Returns:
+            List of matching chunks with their similarity scores
+        """
+        try:
+            import numpy as np
+            from numpy.linalg import norm
+            
+            # Get all chunks for the document
+            chunks = await self.get_document_chunks(document_id)
+            if not chunks:
+                return []
+                
+            # Convert query embedding to numpy array
+            query_embedding_np = np.array(query_embedding, dtype=np.float32)
+            
+            results = []
+            
+            for chunk in chunks:
+                chunk_embedding = chunk.get('embedding')
+                if not chunk_embedding:
+                    continue
+                    
+                # Convert chunk embedding to numpy array if it's a string
+                if isinstance(chunk_embedding, str):
+                    try:
+                        chunk_embedding = np.array(eval(chunk_embedding), dtype=np.float32)
+                    except:
+                        continue
+                elif isinstance(chunk_embedding, list):
+                    chunk_embedding = np.array(chunk_embedding, dtype=np.float32)
+                
+                # Calculate cosine similarity
+                norm_query = norm(query_embedding_np)
+                norm_chunk = norm(chunk_embedding)
+                
+                if norm_query == 0 or norm_chunk == 0:
+                    continue
+                    
+                similarity = np.dot(query_embedding_np, chunk_embedding) / (norm_query * norm_chunk)
+                
+                if similarity >= similarity_threshold:
+                    results.append({
+                        'id': chunk.get('id'),
+                        'document_id': chunk.get('document_id'),
+                        'content': chunk.get('content', ''),
+                        'metadata': chunk.get('metadata', {}),
+                        'similarity': float(similarity)
+                    })
+            
+            # Sort by similarity score in descending order
+            results.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            # Return top N results
+            return results[:limit]
+            
+        except Exception as e:
+            logger.error(f"Error in search_chunks: {str(e)}", exc_info=True)
+            return []
+            
     async def list_documents(self) -> List[DocumentInDB]:
         """List all documents"""
         try:
@@ -203,6 +283,123 @@ class DatabaseService:
         except Exception as e:
             print(f"Error in list_documents: {str(e)}", exc_info=True)
             raise Exception(f"Error listing documents: {str(e)}")
+            
+    async def search_chunks(
+        self,
+        document_id: str,
+        query_embedding: List[float],
+        limit: int = 5,
+        similarity_threshold: float = 0.5
+    ) -> List[Dict[str, Any]]:
+        """
+        Search for similar chunks using vector similarity search
+        
+        Args:
+            document_id: ID of the document to search within
+            query_embedding: The embedding vector to search with
+            limit: Maximum number of results to return
+            similarity_threshold: Minimum similarity score (0-1) for results
+            
+        Returns:
+            List of matching chunks with their similarity scores
+        """
+        try:
+            # Ensure query_embedding is a numpy array of float32
+            import numpy as np
+            from numpy.linalg import norm
+            
+            # Convert query_embedding to numpy array with float32 dtype
+            query_embedding_np = np.array(query_embedding, dtype=np.float32)
+            
+            # Verify the document exists and is processed
+            doc = await self.get_document(document_id)
+            if not doc or doc.status != 'completed':
+                logger.warning(f"Document {document_id} not found or not processed")
+                return []
+            
+            # Get all chunks for the document
+            chunks = await self.get_document_chunks(document_id)
+            if not chunks:
+                logger.warning(f"No chunks found for document {document_id}")
+                return []
+                
+            results = []
+            
+            for chunk in chunks:
+                try:
+                    # Get chunk embedding and ensure it's a numpy array of float32
+                    chunk_embedding = chunk.get('embedding')
+                    if not chunk_embedding:
+                        continue
+                        
+                    # Convert to numpy array if it's a string or list
+                    if isinstance(chunk_embedding, str):
+                        # Handle string representation of list
+                        chunk_embedding = np.array(eval(chunk_embedding), dtype=np.float32)
+                    elif isinstance(chunk_embedding, list):
+                        chunk_embedding = np.array(chunk_embedding, dtype=np.float32)
+                    else:
+                        chunk_embedding = np.array(chunk_embedding, dtype=np.float32)
+                    
+                    # Calculate cosine similarity
+                    norm_query = norm(query_embedding_np)
+                    norm_chunk = norm(chunk_embedding)
+                    
+                    if norm_query == 0 or norm_chunk == 0:
+                        logger.warning("Zero vector encountered in query or chunk embedding")
+                        continue
+                        
+                    similarity = np.dot(query_embedding_np, chunk_embedding) / (norm_query * norm_chunk)
+                    
+                    if similarity >= similarity_threshold:
+                        results.append({
+                            'id': chunk.get('id'),
+                            'document_id': chunk.get('document_id'),
+                            'content': chunk.get('content', ''),
+                            'metadata': chunk.get('metadata', {}),
+                            'similarity': float(similarity)
+                        })
+                        
+                except Exception as e:
+                    logger.error(f"Error processing chunk {chunk.get('id')}: {str(e)}")
+                    continue
+                    
+            # Sort by similarity in descending order
+            results.sort(key=lambda x: x['similarity'], reverse=True)
+            
+            # Log top results for debugging
+            if results:
+                logger.info(f"Top {min(3, len(results))} results with similarities: {[r['similarity'] for r in results[:3]]}")
+            else:
+                logger.warning("No results found above similarity threshold")
+                
+                # For debugging, try with a lower threshold
+                if chunks:
+                    logger.info("Trying with lower threshold for debugging...")
+                    for chunk in chunks[:3]:  # Check first 3 chunks
+                        try:
+                            chunk_embedding = chunk.get('embedding')
+                            if isinstance(chunk_embedding, str):
+                                chunk_embedding = np.array(eval(chunk_embedding), dtype=np.float32)
+                            else:
+                                chunk_embedding = np.array(chunk_embedding, dtype=np.float32)
+                            
+                            norm_query = norm(query_embedding_np)
+                            norm_chunk = norm(chunk_embedding)
+                            
+                            if norm_query > 0 and norm_chunk > 0:
+                                similarity = np.dot(query_embedding_np, chunk_embedding) / (norm_query * norm_chunk)
+                                logger.info(f"Chunk {chunk.get('id')} similarity: {similarity:.4f}, "
+                                          f"content: {chunk.get('content', '')[:100]}...")
+                        except Exception as e:
+                            logger.error(f"Debug error: {str(e)}")
+            
+            return results[:limit]
+            
+        except Exception as e:
+            error_msg = f"Error in search_chunks: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return []
 
 
 # Create a singleton instance

@@ -167,11 +167,21 @@ async def process_document_worker(
         logger.info(f"Processing document {document_id} from queue {x_cloudtasks_queuename} (Task: {x_cloudtasks_taskname})")
         
         # Update status to PROCESSING
-        await database_service.update_document_status(
+        # Use allow_missing=True to handle cases where the document might have been deleted
+        success = await database_service.update_document_status(
             document_id, 
             DocumentStatus.PROCESSING,
-            error_message=None  # Clear any previous errors
+            error_message=None,  # Clear any previous errors
+            allow_missing=True
         )
+        
+        if not success:
+            logger.warning(f"Document {document_id} not found during processing - it may have been deleted")
+            return {
+                "status": "skipped",
+                "document_id": document_id,
+                "message": "Document not found - it may have been deleted"
+            }
         
         try:
             # Process the document
@@ -182,7 +192,8 @@ async def process_document_worker(
                 # Update status to COMPLETED
                 await database_service.update_document_status(
                     document_id, 
-                    DocumentStatus.COMPLETED
+                    DocumentStatus.COMPLETED,
+                    allow_missing=True  # Don't fail if document was deleted
                 )
                 
                 response_data = {
@@ -199,7 +210,8 @@ async def process_document_worker(
                     await database_service.update_document_status(
                         document_id,
                         DocumentStatus.FAILED,
-                        error_message=error_msg[:500]  # Limit error message length
+                        error_message=error_msg,
+                        allow_missing=True  # Don't fail if document was deleted
                     )
                 except Exception as update_error:
                     logger.error(f"Failed to update document status to FAILED: {str(update_error)}")
