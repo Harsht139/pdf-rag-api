@@ -44,6 +44,7 @@ const ChatBox = ({ documentId }) => {
 
     const updatedMessages = [...messages, userMessage];
     setMessages(updatedMessages);
+    const currentInput = input; // keep a copy for fallbacks
     setInput('');
     setIsLoading(true);
 
@@ -55,11 +56,19 @@ const ChatBox = ({ documentId }) => {
       );
 
       // Add assistant's response
+      const responseText =
+        (response && typeof response.message === 'string' && response.message) ||
+        (response && response.message && response.message.content) ||
+        '';
+
       const assistantMessage = {
         id: Date.now() + 1,
         role: 'assistant',
-        content: response.message.content,
-        timestamp: new Date()
+        content: responseText && responseText.trim().length > 0
+          ? responseText
+          : getDummyResponse(currentInput),
+        timestamp: new Date(),
+        sources: Array.isArray(response?.sources) ? response.sources : []
       };
 
       setMessages(prev => [...prev, assistantMessage]);
@@ -102,10 +111,10 @@ const ChatBox = ({ documentId }) => {
     <div className="flex flex-col h-[500px] max-h-[70vh]">
       {/* Notification Banner */}
       {notification && (
-        <div 
+        <div
           className={`p-3 mb-2 rounded-md ${
-            notification.type === 'success' 
-              ? 'bg-green-100 text-green-800 border border-green-200' 
+            notification.type === 'success'
+              ? 'bg-green-100 text-green-800 border border-green-200'
               : notification.type === 'error'
                 ? 'bg-red-100 text-red-800 border border-red-200'
                 : 'bg-blue-100 text-blue-800 border border-blue-200'
