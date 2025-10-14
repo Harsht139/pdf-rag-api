@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 class DocumentStatus(str, Enum):
     PENDING = "pending"
+    QUEUED = "queued"
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"

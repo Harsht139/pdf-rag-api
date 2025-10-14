@@ -9,19 +9,22 @@ from app.services.storage import storage_service
 from app.utils.file_utils import (download_file, process_url,
                                   validate_pdf_content)
 from fastapi import (APIRouter, Depends, File, HTTPException, Query,
-                     UploadFile, status)
+                     UploadFile, status, Request)
 from fastapi.responses import JSONResponse
+from app.api.v1.endpoints.process import process_document
 
 logger = logging.getLogger(__name__)
 
-# Create the router
-router = APIRouter(prefix="/documents", tags=["documents"])
+# Create the router without prefix since it's already included in main.py
+router = APIRouter(tags=["documents"])
 
 
 @router.post(
     "/upload", response_model=DocumentInDB, status_code=status.HTTP_201_CREATED
 )
-async def upload_pdf(file: UploadFile = File(...)):
+async def upload_pdf(
+    file: UploadFile = File(..., max_size=50 * 1024 * 1024)  # 50MB max file size
+):
     """
     Upload a PDF file for processing
 
@@ -63,6 +66,22 @@ async def upload_pdf(file: UploadFile = File(...)):
 
         document = await database_service.create_document(document_data)
         logger.info(f"Successfully uploaded document: {document.id}")
+
+        # Trigger background processing
+        try:
+            from app.api.v1.endpoints.process import _process_document_internal
+            await _process_document_internal(str(document.id))
+            logger.info(f"Successfully triggered processing for document: {document.id}")
+        except Exception as e:
+            error_msg = f"Error triggering processing for document {document.id}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            # Update document status to failed
+            await database_service.update_document_status(
+                document.id,
+                DocumentStatus.FAILED,
+                error_message=error_msg
+            )
+            # Don't fail the upload if processing trigger fails
 
         return document
 
