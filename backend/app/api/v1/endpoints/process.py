@@ -176,19 +176,36 @@ async def process_document_worker(
         try:
             # Process the document
             logger.info(f"Starting document processing for {document_id}")
-            await processing.process_document(document_id)
-            
-            # Update status to COMPLETED
-            await database_service.update_document_status(
-                document_id, 
-                DocumentStatus.COMPLETED
-            )
-            
-            response_data = {
-                "status": "processed",
-                "document_id": document_id,
-                "message": "Document processed successfully"
-            }
+            try:
+                await processing.process_document(document_id)
+                
+                # Update status to COMPLETED
+                await database_service.update_document_status(
+                    document_id, 
+                    DocumentStatus.COMPLETED
+                )
+                
+                response_data = {
+                    "status": "processed",
+                    "document_id": document_id,
+                    "message": "Document processed successfully"
+                }
+            except Exception as process_error:
+                # Log the error and update status to FAILED
+                error_msg = f"Error processing document {document_id}: {str(process_error)}"
+                logger.error(error_msg, exc_info=True)
+                
+                try:
+                    await database_service.update_document_status(
+                        document_id,
+                        DocumentStatus.FAILED,
+                        error_message=error_msg[:500]  # Limit error message length
+                    )
+                except Exception as update_error:
+                    logger.error(f"Failed to update document status to FAILED: {str(update_error)}")
+                
+                # Re-raise the original error to be handled by the outer try-except
+                raise process_error
             
             logger.info(f"Successfully processed document {document_id}")
             return response_data

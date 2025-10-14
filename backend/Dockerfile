@@ -33,5 +33,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
-# Command to run the application
-CMD ["sh", "-c", "uvicorn main:app --host $HOST --port $PORT --workers 1 --timeout-keep-alive 60"]
+# Command to run the application with proper host and port configuration
+CMD ["sh", "-c", "echo 'Starting application...' && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1 --timeout-keep-alive 60 --log-level debug"]

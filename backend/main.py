@@ -66,7 +66,7 @@ except Exception as e:
 try:
     logger.info("Including API routers...")
     app.include_router(documents.router, prefix="/api/v1/documents", tags=["documents"])
-    app.include_router(process.router, prefix="/api/v1/process", tags=["processing"])
+    app.include_router(process.router, prefix="/api/v1/process", tags=["process"])
     logger.info("API routers included successfully")
 except Exception as e:
     logger.error(f"Error including API routers: {str(e)}")

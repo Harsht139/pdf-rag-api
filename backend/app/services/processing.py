@@ -8,6 +8,7 @@ import google.generativeai as genai
 from app.services.storage import storage_service
 from app.services.database import database_service
 from app.models.document import DocumentStatus
+import logging
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ async def generate_embeddings(chunks: List[Dict[str, Any]]) -> List[Dict[str, An
 
 async def process_document(document_id: str):
     """Process a document: extract text, chunk it, and generate embeddings."""
-    logger.info(f"Starting to process document {document_id}")
+    logger.info(f"Starting processing for document {document_id}")
     
     try:
         # Update document status to PROCESSING
@@ -250,20 +251,24 @@ async def process_document(document_id: str):
         except Exception as processing_error:
             error_msg = f"Error during document processing: {str(processing_error)}"
             logger.error(error_msg, exc_info=True)
-            await database_service.update_document_status(
-                document_id, 
-                DocumentStatus.FAILED,
-                error_message=error_msg
-            )
-            raise
+            try:
+                await database_service.update_document_status(
+                    document_id, 
+                    DocumentStatus.FAILED,
+                    error_message=error_msg[:500]  # Limit error message length
+                )
+            except Exception as update_error:
+                logger.error(f"Failed to update document status to FAILED: {str(update_error)}")
+            raise processing_error  # Re-raise the original error
             
     except Exception as e:
-        logger.error(f"Fatal error processing document {document_id}: {str(e)}", exc_info=True)
+        error_msg = f"Fatal error processing document {document_id}: {str(e)}"
+        logger.error(error_msg, exc_info=True)
         try:
             await database_service.update_document_status(
                 document_id, 
                 DocumentStatus.FAILED,
-                error_message=f"Fatal error: {str(e)}"
+                error_message=f"Fatal error: {str(e)[:500]}"  # Limit error message length
             )
         except Exception as update_error:
             logger.error(f"Failed to update document status to FAILED: {str(update_error)}")

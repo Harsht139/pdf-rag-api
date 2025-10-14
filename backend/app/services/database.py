@@ -1,12 +1,12 @@
+import asyncio
 import logging
 import uuid
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-import asyncio
 
 from app.config import settings
 from app.models.document import DocumentCreate, DocumentInDB, DocumentStatus
-from supabase import create_client, Client
+from supabase import create_client
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -14,19 +14,13 @@ logger = logging.getLogger(__name__)
 
 class DatabaseService:
     def __init__(self):
-        self._client: Optional[Client] = None
+        self.supabase = create_client(settings.supabase_url, settings.supabase_key)
         self._lock = asyncio.Lock()
-    
-    @property
-    def supabase(self) -> Client:
-        if self._client is None:
-            self._client = create_client(settings.supabase_url, settings.supabase_key)
-        return self._client
 
     async def create_document(self, document: DocumentCreate) -> DocumentInDB:
         """Create a new document record in the database"""
-        async with self._lock:
-            try:
+        try:
+            async with self._lock:
                 document_dict = document.dict()
                 document_dict["id"] = str(uuid.uuid4())
                 document_dict["created_at"] = datetime.utcnow().isoformat()
@@ -49,23 +43,18 @@ class DatabaseService:
 
     async def get_document(self, document_id: str) -> Optional[DocumentInDB]:
         """Get a document by ID"""
-        async with self._lock:
-            try:
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: (
-                        self.supabase.table("documents")
-                        .select("*")
-                        .eq("id", document_id)
-                        .execute()
-                    )
-                )
-                if not result.data:
-                    return None
-                return DocumentInDB(**result.data[0])
-            except Exception as e:
-                raise Exception(f"Database error: {str(e)}")
+        try:
+            result = (
+                self.supabase.table("documents")
+                .select("*")
+                .eq("id", document_id)
+                .execute()
+            )
+            if not result.data:
+                return None
+            return DocumentInDB(**result.data[0])
+        except Exception as e:
+            raise Exception(f"Database error: {str(e)}")
 
     async def update_document_status(
         self, 
@@ -86,46 +75,41 @@ class DatabaseService:
         Raises:
             Exception: If there's an error updating the document
         """
-        async with self._lock:
-            try:
-                # First, get the current document to check its structure
-                current_doc = await self.get_document(document_id)
-                if not current_doc:
-                    raise ValueError(f"Document with ID {document_id} not found")
-                    
-                # Prepare the update data
-                update_data = {
-                    "status": status,
-                    "updated_at": datetime.utcnow().isoformat()
-                }
+        try:
+            # First, get the current document to check its structure
+            current_doc = await self.get_document(document_id)
+            if not current_doc:
+                raise ValueError(f"Document with ID {document_id} not found")
                 
-                # Only include error_message if it's provided and the column exists
-                if error_message is not None:
-                    update_data["error_message"] = error_message
+            # Prepare the update data
+            update_data = {
+                "status": status,
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            # Only include error_message if it's provided and the column exists
+            if error_message is not None:
+                update_data["error_message"] = error_message
+            
+            # Log the update
+            logger.info(f"Updating document {document_id} status to {status}")
+            if error_message:
+                logger.warning(f"Error message for document {document_id}: {error_message[:200]}...")
+            
+            # Execute the update
+            result = (
+                self.supabase.table("documents")
+                .update(update_data)
+                .eq("id", document_id)
+                .execute()
+            )
+            
+            if not result.data:
+                logger.error(f"No data returned when updating document {document_id}")
+                return False
                 
-                # Log the update
-                logger.info(f"Updating document {document_id} status to {status}")
-                if error_message:
-                    logger.warning(f"Error message for document {document_id}: {error_message[:200]}...")
-                
-                # Execute the update in a thread
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: (
-                        self.supabase.table("documents")
-                        .update(update_data)
-                        .eq("id", document_id)
-                        .execute()
-                    )
-                )
-                
-                if not result.data:
-                    logger.error(f"No data returned when updating document {document_id}")
-                    return False
-                    
-                logger.info(f"Successfully updated document {document_id} status to {status}")
-                return True
+            logger.info(f"Successfully updated document {document_id} status to {status}")
+            return True
             
         except Exception as e:
             error_msg = f"Error updating document status for {document_id}: {str(e)}"
@@ -140,103 +124,81 @@ class DatabaseService:
         metadata: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Create a new chunk for a document"""
-        async with self._lock:
-            try:
-                chunk_data = {
-                    "id": str(uuid.uuid4()),
-                    "document_id": document_id,
-                    "content": content,
-                    "embedding": embedding,
-                    "metadata": metadata or {},
-                    "created_at": datetime.utcnow().isoformat(),
-                    "updated_at": datetime.utcnow().isoformat()
-                }
+        try:
+            chunk_data = {
+                "id": str(uuid.uuid4()),
+                "document_id": document_id,
+                "content": content,
+                "embedding": embedding,
+                "metadata": metadata or {},
+                "created_at": datetime.utcnow().isoformat(),
+                "updated_at": datetime.utcnow().isoformat()
+            }
+            
+            result = self.supabase.table("document_chunks").insert(chunk_data).execute()
+            if not result.data:
+                raise Exception("Failed to create chunk record")
                 
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: self.supabase.table("document_chunks").insert(chunk_data).execute()
-                )
-                
-                if not result.data:
-                    raise Exception("Failed to create chunk record")
-                    
-                return result.data[0]
-                
-            except Exception as e:
-                raise Exception(f"Error creating chunk: {str(e)}")
+            return result.data[0]
+            
+        except Exception as e:
+            raise Exception(f"Error creating chunk: {str(e)}")
             
     async def get_document_chunks(self, document_id: str) -> List[Dict[str, Any]]:
         """Get all chunks for a document"""
-        async with self._lock:
-            try:
-                loop = asyncio.get_event_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: (
-                        self.supabase.table("document_chunks")
-                        .select("*")
-                        .eq("document_id", document_id)
-                        .order("chunk_number")
-                        .execute()
-                    )
-                )
-                return result.data
-            except Exception as e:
-                raise Exception(f"Error getting document chunks: {str(e)}")
+        try:
+            result = (
+                self.supabase.table("document_chunks")
+                .select("*")
+                .eq("document_id", document_id)
+                .order("chunk_number")
+                .execute()
+            )
+            return result.data
+        except Exception as e:
+            raise Exception(f"Error getting document chunks: {str(e)}")
 
     async def delete_document_chunks(self, document_id: str) -> bool:
         """Delete all chunks for a document"""
-        async with self._lock:
-            try:
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(
-                    None,
-                    lambda: (
-                        self.supabase.table("document_chunks")
-                        .delete()
-                        .eq("document_id", document_id)
-                        .execute()
-                    )
-                )
-                return True
-            except Exception as e:
-                raise Exception(f"Error deleting document chunks: {str(e)}")
+        try:
+            result = (
+                self.supabase.table("document_chunks")
+                .delete()
+                .eq("document_id", document_id)
+                .execute()
+            )
+            return True
+        except Exception as e:
+            raise Exception(f"Error deleting document chunks: {str(e)}")
             
     async def list_documents(self) -> List[DocumentInDB]:
         """List all documents"""
-        async with self._lock:
-            try:
-                logger.info("Attempting to list documents from Supabase...")
+        try:
+            print("Attempting to list documents from Supabase...")
+            print(f"Supabase URL: {settings.supabase_url}")
+            
+            # Get the documents
+            response = self.supabase.table("documents").select("*").order("created_at", desc=True).execute()
+            print(f"Supabase response: {response}")
+            
+            if not hasattr(response, 'data'):
+                print("No 'data' attribute in response")
+                return []
                 
-                # Get the documents in a thread
-                loop = asyncio.get_event_loop()
-                response = await loop.run_in_executor(
-                    None,
-                    lambda: self.supabase.table("documents")
-                        .select("*")
-                        .order("created_at", desc=True)
-                        .execute()
-                )
-                
-                if not hasattr(response, 'data'):
-                    logger.warning("No 'data' attribute in response")
-                    return []
-                    
-                documents = response.data
-                logger.info(f"Found {len(documents)} documents in response")
-                
-                # Convert to Pydantic models
-                result = []
-                for doc in documents:
-                    try:
-                        result.append(DocumentInDB(**doc))
-                    except Exception as e:
-                        logger.error(f"Error converting document {doc.get('id')} to DocumentInDB: {str(e)}")
-                        logger.debug(f"Problematic document data: {doc}")
-                
-                logger.info(f"Successfully converted {len(result)} documents to DocumentInDB models")
-                return result
+            documents = response.data
+            print(f"Found {len(documents)} documents in response")
+            
+            # Convert to Pydantic models
+            result = []
+            for doc in documents:
+                try:
+                    result.append(DocumentInDB(**doc))
+                except Exception as e:
+                    print(f"Error converting document {doc.get('id')} to DocumentInDB: {str(e)}")
+                    print(f"Problematic document data: {doc}")
+            
+            print(f"Successfully converted {len(result)} documents to DocumentInDB models")
+            return result
             
         except Exception as e:
             print(f"Error in list_documents: {str(e)}", exc_info=True)
