@@ -90,9 +90,8 @@ deployment/secrets/
 *.tfvars
 
 # Backend local/deploy Makefile
-backend/Makefile
-Makefile
-Makefile
+/backend/Makefile
+
 
 # Terraform
 .terraform/
