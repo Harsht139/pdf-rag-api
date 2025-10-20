@@ -21,6 +21,7 @@ class DocumentBase(BaseModel):
     file_size: int
     file_type: str = "application/pdf"
     status: DocumentStatus = DocumentStatus.PENDING
+    file_hash: str = Field(..., description="SHA-256 hash of the file content for deduplication")
 
 
 class DocumentCreate(DocumentBase):

@@ -3,7 +3,7 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp
-from app.models.document import DocumentCreate, DocumentInDB, DocumentStatus
+from app.models.document import DocumentCreate, DocumentInDB, DocumentStatus, DocumentResponse
 from app.services.database import database_service
 from app.services.storage import storage_service
 from app.utils.file_utils import (download_file, process_url,
@@ -47,41 +47,46 @@ async def upload_pdf(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid PDF file"
             )
 
-        # Upload to Supabase Storage
-        file_url, file_path = await storage_service.upload_file(
+        # Upload to Supabase Storage (this now handles deduplication)
+        file_url, file_path, file_hash = await storage_service.upload_file(
             file_content=content,
             filename=file.filename,
             content_type=file.content_type or "application/pdf",
         )
 
-        # Save document info
+        # Check if this is a duplicate (file already existed)
+        existing_doc = await database_service.get_document_by_hash(file_hash)
+        if existing_doc:
+            logger.info(f"Returning existing document with ID: {existing_doc.id}")
+            return DocumentResponse(**existing_doc.dict())
+
+        # Save document info with hash
         document_data = DocumentCreate(
             filename=file.filename,
             file_path=file_path,
             file_url=file_url,
             file_size=len(content),
             file_type=file.content_type or "application/pdf",
-            status=DocumentStatus.COMPLETED,
+            status=DocumentStatus.PENDING,  # Will be updated by the processor
+            file_hash=file_hash,
         )
 
         document = await database_service.create_document(document_data)
-        logger.info(f"Successfully uploaded document: {document.id}")
+        logger.info(f"Successfully created new document: {document.id}")
 
-        # Trigger background processing
+        # Only trigger processing for new documents
         try:
             from app.api.v1.endpoints.process import _process_document_internal
             await _process_document_internal(str(document.id))
-            logger.info(f"Successfully triggered processing for document: {document.id}")
+            logger.info(f"Triggered processing for new document: {document.id}")
         except Exception as e:
             error_msg = f"Error triggering processing for document {document.id}: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            # Update document status to failed
             await database_service.update_document_status(
                 document.id,
                 DocumentStatus.FAILED,
                 error_message=error_msg
             )
-            # Don't fail the upload if processing trigger fails
 
         return document
 
@@ -142,25 +147,48 @@ async def ingest_pdf_from_url(
                 detail="The URL does not point to a valid PDF file",
             )
 
-        # Upload to storage
-        file_url, file_path = await storage_service.upload_file(
-            file_content=content, filename=filename, content_type="application/pdf"
+        # Upload to storage (handles deduplication)
+        file_url, file_path, file_hash = await storage_service.upload_file(
+            file_content=content, 
+            filename=filename, 
+            content_type="application/pdf"
         )
 
-        # Save document info
+        # Check if this is a duplicate (file already existed)
+        existing_doc = await database_service.get_document_by_hash(file_hash)
+        if existing_doc:
+            logger.info(f"Returning existing document with ID: {existing_doc.id}")
+            return DocumentResponse(**existing_doc.dict())
+
+        # Save document info with hash
         document_data = DocumentCreate(
             filename=filename,
             file_path=file_path,
             file_url=file_url,
             file_size=len(content),
             file_type="application/pdf",
-            status=DocumentStatus.COMPLETED,
+            status=DocumentStatus.PENDING,  # Will be updated by the processor
+            file_hash=file_hash,
         )
 
         document = await database_service.create_document(document_data)
-        logger.info(f"Successfully processed document: {document.id}")
+        logger.info(f"Successfully created new document from URL: {document.id}")
 
-        return document
+        # Only trigger processing for new documents
+        try:
+            from app.api.v1.endpoints.process import _process_document_internal
+            await _process_document_internal(str(document.id))
+            logger.info(f"Triggered processing for new document: {document.id}")
+        except Exception as e:
+            error_msg = f"Error triggering processing for document {document.id}: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            await database_service.update_document_status(
+                document.id,
+                DocumentStatus.FAILED,
+                error_message=error_msg
+            )
+
+        return DocumentResponse(**document.dict())
 
     except HTTPException:
         raise

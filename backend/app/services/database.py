@@ -56,6 +56,32 @@ class DatabaseService:
         except Exception as e:
             raise Exception(f"Database error: {str(e)}")
 
+    async def get_document_by_hash(self, file_hash: str) -> Optional[DocumentInDB]:
+        """
+        Get a document by its file hash.
+        
+        Args:
+            file_hash: SHA-256 hash of the file content
+            
+        Returns:
+            DocumentInDB if found, None otherwise
+        """
+        try:
+            result = (
+                self.supabase.table("documents")
+                .select("*")
+                .eq("file_hash", file_hash)
+                .order("created_at", desc=True)  # Get the most recent one if multiple
+                .limit(1)
+                .execute()
+            )
+            if not result.data:
+                return None
+            return DocumentInDB(**result.data[0])
+        except Exception as e:
+            logger.error(f"Error getting document by hash {file_hash}: {str(e)}")
+            return None
+
     async def update_document_status(
         self, 
         document_id: str, 
